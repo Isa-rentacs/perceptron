@@ -21,6 +21,7 @@ using namespace std;
 #define BETA 6
 #define GAMMA 16
 #define DELTA 16
+#define LOOP_MAX 100
 #define LL long long
 
 class Perceptron{
@@ -37,14 +38,14 @@ public:
          */
         for(int i=0;i<L+1;i++){
             for(int j=0;j<M;j++){
-                wlm[i][j] = rand() % (pow2[17]+1) - pow2[16];
+                wlm[i][j] = rand() % (pow2[DELTA+1]+1) - pow2[DELTA];
                 if(is_debug) printf("[perceptron::init]wlm[i][j] = %lld\n", wlm[i][j]);
                 dlm[i][j] = 0;
             }
         }
         for(int i=0;i<M+1;i++){
             for(int j=0;j<N;j++){
-                wmn[i][j] = rand() % (pow2[17]+1) - pow2[16];
+                wmn[i][j] = rand() % (pow2[DELTA+1]+1) - pow2[DELTA];
                 if(is_debug) printf("[perceptron::init]wmn[i][j] = %lld\n", wmn[i][j]);
                 dmn[i][j] = 0;
             }
@@ -54,65 +55,82 @@ public:
     void print_param(void){
         for(int i=0;i<L+1;i++){
             for(int j=0;j<M;j++){
-                printf("[perceptron::print_param]wlm[%d][%d] = %lf\n",i,j,wlm[i][j]);
+                printf("[perceptron::print_param]wlm[%d][%d] = %lld\n",i,j,wlm[i][j]);
             }
         }
         for(int i=0;i<M+1;i++){
             for(int j=0;j<N;j++){
-                printf("[perceptron::print_param]wmn[%d][%d] = %lf\n",i,j,wmn[i][j]);
+                printf("[perceptron::print_param]wmn[%d][%d] = %lld\n",i,j,wmn[i][j]);
             }
         }
         return;
     }
 
-    double learn(vector<string> arg){
+    LL learn(vector<string> arg){
         int n=arg.size(); //# of teacher data
         int teacher;
-        double result;
-        double error=0;
+        LL result;
+        LL error=0;
         //領域の初期化
         memset(dlm, 0, sizeof(dlm));
         memset(dmn, 0, sizeof(dmn));
 
         //全てのデータに対する微分係数の和を求めていく
-        for(int i=0;i<n;i++){
-            istringstream iss(arg[i]);
-            double delta_k, delta_j;
+        //一括修正法:それぞれの教師データの誤差の和を
+        //小さくする方向に修正する
+        for(int x=0;x<LOOP_MAX;x++){
 
-            for(int j=0;j<L;j++){
+            //変化量領域の初期化
+            memset(dlm, 0, sizeof(dlm));
+            memset(dmn, 0, sizeof(dmn));
+
+            for(int i=0;i<n;i++){
+                istringstream iss(arg[i]);
+                LL delta_k, delta_j;
+
+                for(int j=0;j<L;j++){
+                    iss >> teacher;
+                }
                 iss >> teacher;
-            }
-            iss >> teacher;
 	  
-            result = get(arg[i]);
+                //実際の値の2^GAMMA倍の値が出てくる
+                result = get(arg[i]);
 
-            //M->Nの偏微分値
-            delta_k = (teacher - result) * result * (1 - result);
-            for(int j=0;j<M+1;j++){
-                for(int k=0;k<N;k++){
-                    if(j != M){
-                        dmn[j][k] += delta_k * Mout[j];
-                    }else{
-                        dmn[j][k] += delta_k * -1;
+                //M->Nの偏微分値
+                //最終的な値は本来の値の2^DELTA倍になっていればよい
+                delta_k = (teacher << GAMMA) - result;
+                delta_k *= (1 << GAMMA) - result;
+                delta_k >>= GAMMA;
+                delta_k *= result;
+                delta_k >>= GAMMA;
+                for(int j=0;j<M+1;j++){
+                    for(int k=0;k<N;k++){
+                        if(j != M){
+                            dmn[j][k] += (((delta_k * Mout[j]) >> GAMMA) << DELTA) >> GAMMA;
+                        }else{
+                            dmn[j][k] += ((delta_k * -1) << DELTA) >> GAMMA;
+                        }
+                    }
+                }
+	  
+	  
+                //L->Mの偏微分値
+                for(int j=0;j<M;j++){
+                    delta_j = (delta_k * wmn[j][0]) >> DELTA;
+                    delta_j *= Mout[j];
+                    delta_j >>= GAMMA;
+                    delta_j *= (1<<GAMMA) - Mout[j];
+                    delta_j >>= GAMMA;
+                    for(int k=0;k<L+1;k++){
+                        if(k != L){
+                            dlm[k][j] += (((delta_j * Lout[k]) >> GAMMA) << DELTA) >> GAMMA;
+                        }else{
+                            dlm[k][j] += ((delta_j * -1) << DELTA) >> GAMMA;
+                        }
                     }
                 }
             }
-	  
-	  
-            //L->Mの偏微分値
-            for(int j=0;j<M;j++){
-                delta_j = Mout[j] * (1 - Mout[j]) * delta_k * wmn[j][0];
-                for(int k=0;k<L+1;k++){
-                    if(k != L){
-                        dlm[k][j] += delta_j * Lout[k];
-                    }else{
-                        dlm[k][j] += delta_j * -1;
-                    }
-                }
-            }
-            error += (teacher - result) * (teacher - result);
-        }
-        if(is_debug){
+
             for(int i=0;i<L+1;i++){
                 for(int j=0;j<M;j++){
                     wlm[i][j] += dlm[i][j] * eta;
@@ -158,9 +176,15 @@ public:
         //M層i番目のノードの出力値を計算する
         LL ModifiedInput;
         for(int i=0;i<M;i++){
-            ModifiedInput = (Min[i] >> (1 + DELTA + ALPHA)) / BETA + pow2[ALPHA-1];
+            ModifiedInput = (Min[i] >> (1 + DELTA - ALPHA)) / BETA + pow2[ALPHA-1];
             if(is_debug) printf("[perceptron::get]Layer-M,%d-th Node, ModifiedInputSum = %lld\n", i, ModifiedInput);
-            Mout[i] = sigmoid[ModifiedInput];
+            if(0 <= ModifiedInput && ModifiedInput < (1 << ALPHA)){
+                Mout[i] = sigmoid[ModifiedInput];
+            }else if(ModifiedInput < 0){
+                Mout[i] = 0;
+            }else{
+                Mout[i] = 1 << GAMMA;
+            }
             if(is_debug) printf("[perceptron::get]Layer-M,%d-th Node, ModifiedOutput = %lld\n",i , Mout[i]);
         }
 
@@ -180,6 +204,13 @@ public:
         ModifiedInput = (Nin[0] >> (1 + GAMMA + DELTA - ALPHA)) / BETA + pow2[ALPHA-1];
         if(is_debug) printf("[perceptron::get][Layer-N,0-thNode,ModifiedInputSum] = %lld\n", ModifiedInput);
         if(is_debug) printf("[perceptron::get][Layer-N,0-thNode,ModifiedOutput] = %lld\n", sigmoid[ModifiedInput]);
+        if(0 <= ModifiedInput && ModifiedInput < (1 << ALPHA)){
+            return sigmoid[ModifiedInput];
+        }else if(ModifiedInput < 0){
+            return 0;
+        }else{
+            return 1 << GAMMA;
+        }
         return sigmoid[ModifiedInput];
     }
 

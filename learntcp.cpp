@@ -9,108 +9,100 @@
 
 using namespace std;
 
-#define LOOP_MAX 10000
+#ifndef LL
+#define LL long long
+#endif
 
 int parseInt(char *arg){
-  string str;
-  int ret;
+    string str;
+    int ret;
 
-  for(int i=0;i<(int)strlen(arg);i++){
-    str += arg[i];
-  }
+    for(int i=0;i<(int)strlen(arg);i++){
+        str += arg[i];
+    }
 
-  istringstream iss(str);
-  iss >> ret;
+    istringstream iss(str);
+    iss >> ret;
 
-  return ret;
+    return ret;
 }
 
 int main(int argc, char *argv[]){
-  vector<string> teacher;
-  vector<string> data;
-  string str;
-  double e;
-  int t=0;
-  long long tsum=0;
-  int n;
-  int ans;
-  int takenAll=0, takenNormal=0;
-  int gaveup=0, random=0;
-  bool istaken;
-  double pred;
-  Perceptron p;
+    vector<string> teacher;
+    vector<string> data;
+    string str;
+    int t=0;
+    long long tsum=0;
+    int n;
+    int ans;
+    int takenAll=0, takenNormal=0;
+    int gaveup=0, random=0;
+    int istaken;
+    LL result,e;
+    int pred;
+    Perceptron p;
 
-  if(argc == 1){
-    cout << "input number of teacher. Exitting." <<endl;
-    exit(0);
-  }
-  n = parseInt(argv[1]);
-  cout << "history length = " << n << endl;
+    if(argc == 1){
+        cout << "input number of teacher. Exitting." <<endl;
+        exit(0);
+    }
+    n = parseInt(argv[1]);
+    cout << "history length = " << n << endl;
 
-  //データの読み込み
-  ifstream fin("./data.dat");
+    //データの読み込み
+    ifstream fin("./data.dat");
 
-  while(getline(fin,str)){
-    data.push_back(str);
-  }
+    while(getline(fin,str)){
+        data.push_back(str);
+    }
 
-  cout << "data loaded. # of data =" << data.size() << endl;
+    cout << "data loaded. # of data =" << data.size() << endl;
   
-  //n番目から予測を始める
-  for(int i=n;i<(int)data.size();i++){
-    teacher.clear(); //教師データのクリア
-    p.init();        //perceptron内parameterのクリア
-    for(int j=0;j<n;j++){
-      teacher.push_back(data[i-1-j]); //教師データを加えていく
-    }
-    //与えた教師データでの学習を行う
-    t = 0; //loop回数のカウンタリセット
-    do{
-      e = p.learn(teacher);
-      t++;
-      //cout << e << endl;
-    }while(e > 0.05*n && t < LOOP_MAX);
+    //n番目から予測を始める
+    for(int x=0;x<100;x++){
+    for(int i=n;i<(int)data.size();i++){
+        teacher.clear(); //教師データのクリア
+        p.init();        //perceptron内parameterのクリア
+        for(int j=0;j<n;j++){
+            teacher.push_back(data[i-1-j]); //教師データを加えていく
+        }
+        //与えた教師データでの学習を行う
+        e = p.learn(teacher);
 
-    if(t == LOOP_MAX) gaveup++;
-
-    //教師データ(正答)を取得
-    istringstream iss(data[i]);
-    for(int j=0;j<3;j++){
-      iss >> ans;
-    }
-    iss >> ans;
+        //教師データ(正答)を取得
+        istringstream iss(data[i]);
+        for(int j=0;j<3;j++){
+            iss >> ans;
+        }
+        iss >> ans;
     
-    //paramter出力
-    p.print_param();
-    //教師データを流してperceptronからの出力を得る
-    pred = p.get(data[i]);
+        //paramter出力
+        //p.print_param();
+        //教師データを流してperceptronからの出力を得る
+        result = p.get(data[i]);
 
-    if(pred == 0.5){
-      pred = rand() % 2;
-      random++;
-    }else if(pred > 0.5){
-      pred = 1;
-    }else{
-      pred = 0;
+        //printf("pred = %llu\n", result);
+        //predictonの値を決める
+        if(result > (1 << (GAMMA-1))){
+            pred = 1;
+        }else{
+            pred = 0;
+        }
+
+        //cout << pred << endl;
+        if(pred == ans){
+            takenAll++;
+            //if(t != LOOP_MAX) takenNormal++;
+            istaken = 1;
+            //cout << takenAll << endl;
+        }else{
+            istaken = 0;
+        }
+        printf("[%d]answer = %d, prediction = %d, istaken=%d, repeated %d times\n",
+               i,ans,(int)round(pred),istaken, t);
+
+    }
     }
 
-    if(fabs((double)ans - pred) == 0){
-      takenAll++;
-      if(t != LOOP_MAX) takenNormal++;
-      istaken = true;
-    }else{
-      istaken = false;
-    }
-    printf("[%d]answer = %d, prediction = %d, istaken=%d, repeated %d times\n",
-	   i,ans,(int)pred,istaken, t);
-    if(t != LOOP_MAX){
-      tsum += t;
-    }
-  }
-
-  printf("taken rate(ALL)=%lf(%d/%d), ",(double)takenAll / (data.size()- n), takenAll, (int)data.size() - n);
-  printf("taken rate(except gave up) = %lf(%d/%d)\n", (double)takenNormal / (data.size() - n - gaveup), takenNormal, 
-	 (int)data.size() - n - gaveup);
-  printf("average loop times(except gave up) = %lf, ", (double)tsum / (data.size() - n - gaveup));
-  printf("# of gaveup = %d, # of determined randomly = %d\n", gaveup, random);
+    printf("taken rate(ALL)=%lf(%d/%d), ",(double)takenAll / ((data.size()- n)*100), takenAll, (int)(data.size() - n)*1000);
 }
